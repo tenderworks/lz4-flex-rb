@@ -28,7 +28,15 @@ module Lz4Flex
       raise Error, "unsupported encoding for string, please use Lz4Flex.compress_block instead"
     end
 
-    Lz4FlexExt.compress(input, encoding_id).tap { |output| output.force_encoding(Encoding::BINARY) }
+    # Allocate the output buffer on the Ruby side at the worst-case size and let
+    # Rust write directly into it, avoiding a copy out of a Rust-owned buffer.
+    # `String.new(capacity:)` reserves the bytes without zero-filling; the native
+    # glue truncates the String to the returned written length via rb_str_set_len.
+    output = String.new(capacity: Lz4FlexExt.max_compressed_size(input.bytesize))
+    written = Lz4FlexExt.compress_into(input, encoding_id, output)
+    raise EncodeError, "failed to compress block" if written == 0xffffffff
+
+    output
   rescue Error
     raise
   rescue StandardError => e
@@ -45,11 +53,9 @@ module Lz4Flex
     data_offset = (metadata >> 32) & 0x00ffffff
     expected_size = metadata & 0xffffffff
 
-    output = if input.bytesize >= expected_size
-      input.byteslice(0, expected_size)
-    else
-      "\0".b * expected_size
-    end
+    # Reserve the exact decompressed size without zero-filling; the native glue
+    # truncates the String to the returned written length via rb_str_set_len.
+    output = String.new(capacity: expected_size)
     written = Lz4FlexExt.decompress_payload_into(input, data_offset, expected_size, output)
     raise DecodeError, "failed to decompress block" if written == 0xffffffff
     raise DecodeError, "unexpected decompressed size" if written != expected_size

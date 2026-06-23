@@ -18,9 +18,14 @@ static inline FfiString bolt_rb_to_ffi_string(VALUE v) {
 static inline FfiBytes bolt_rb_to_ffi_bytes(VALUE v) {
     FfiBytes b; b.ptr = (const uint8_t*)RSTRING_PTR(v); b.len = (uintptr_t)RSTRING_LEN(v); return b;
 }
+// Output buffer: hand Rust a slice spanning the String's full *capacity* (not
+// its current length), so a caller can pass an empty `String.new(capacity: n)`
+// and have Rust write into the reserved space. The caller then truncates the
+// String to the written length via rb_str_set_len (emitted after the call for
+// functions/methods that return that length — the output-buffer convention).
 static inline FfiBytesMut bolt_rb_to_ffi_bytes_mut(VALUE v) {
     rb_str_modify(v);
-    FfiBytesMut b; b.ptr = (uint8_t*)RSTRING_PTR(v); b.len = (uintptr_t)RSTRING_LEN(v); return b;
+    FfiBytesMut b; b.ptr = (uint8_t*)RSTRING_PTR(v); b.len = (uintptr_t)rb_str_capacity(v); return b;
 }
 
 static inline int bolt_rb_to_ffi_bool(VALUE v) {
@@ -124,6 +129,10 @@ static VALUE boltffi_ruby_compress_into(VALUE self, VALUE boltffi_ruby_input, VA
     Check_Type(boltffi_ruby_input, T_STRING);
     Check_Type(boltffi_ruby_output, T_STRING);
     uint32_t _ffi_ret = boltffi_compress_into(bolt_rb_to_ffi_bytes(boltffi_ruby_input), NUM2UINT(boltffi_ruby_encoding_val), bolt_rb_to_ffi_bytes_mut(boltffi_ruby_output));
+    // Output-buffer convention: _ffi_ret is the written length. Truncate the
+    // buffer String to it, guarding against an out-of-range error sentinel
+    // (e.g. u32::MAX) that must not be passed to rb_str_set_len.
+    if ((uintptr_t)_ffi_ret <= rb_str_capacity(boltffi_ruby_output)) rb_str_set_len(boltffi_ruby_output, (long)_ffi_ret);
     return rb_uint2inum((uintptr_t)_ffi_ret);
 
 }
@@ -131,6 +140,10 @@ static VALUE boltffi_ruby_decompress_into(VALUE self, VALUE boltffi_ruby_input, 
     Check_Type(boltffi_ruby_input, T_STRING);
     Check_Type(boltffi_ruby_output, T_STRING);
     uint32_t _ffi_ret = boltffi_decompress_into(bolt_rb_to_ffi_bytes(boltffi_ruby_input), bolt_rb_to_ffi_bytes_mut(boltffi_ruby_output));
+    // Output-buffer convention: _ffi_ret is the written length. Truncate the
+    // buffer String to it, guarding against an out-of-range error sentinel
+    // (e.g. u32::MAX) that must not be passed to rb_str_set_len.
+    if ((uintptr_t)_ffi_ret <= rb_str_capacity(boltffi_ruby_output)) rb_str_set_len(boltffi_ruby_output, (long)_ffi_ret);
     return rb_uint2inum((uintptr_t)_ffi_ret);
 
 }
@@ -138,6 +151,10 @@ static VALUE boltffi_ruby_decompress_payload_into(VALUE self, VALUE boltffi_ruby
     Check_Type(boltffi_ruby_input, T_STRING);
     Check_Type(boltffi_ruby_output, T_STRING);
     uint32_t _ffi_ret = boltffi_decompress_payload_into(bolt_rb_to_ffi_bytes(boltffi_ruby_input), NUM2UINT(boltffi_ruby_data_offset), NUM2UINT(boltffi_ruby_expected_size), bolt_rb_to_ffi_bytes_mut(boltffi_ruby_output));
+    // Output-buffer convention: _ffi_ret is the written length. Truncate the
+    // buffer String to it, guarding against an out-of-range error sentinel
+    // (e.g. u32::MAX) that must not be passed to rb_str_set_len.
+    if ((uintptr_t)_ffi_ret <= rb_str_capacity(boltffi_ruby_output)) rb_str_set_len(boltffi_ruby_output, (long)_ffi_ret);
     return rb_uint2inum((uintptr_t)_ffi_ret);
 
 }

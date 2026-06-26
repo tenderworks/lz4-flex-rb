@@ -27,16 +27,6 @@ static inline FfiBytesMut bolt_rb_to_ffi_bytes_mut(VALUE v) {
     rb_str_modify(v);
     FfiBytesMut b; b.ptr = (uint8_t*)RSTRING_PTR(v); b.len = (uintptr_t)rb_str_capacity(v); return b;
 }
-// Allocate an empty output buffer with `capacity` bytes reserved, for use with
-// the output-buffer convention above. This is the C-level equivalent of
-// `String.new(capacity:)` but skips String#initialize's keyword-argument
-// parsing, which dominates the cost in tight loops. Returns an ASCII-8BIT
-// String of length 0; callers force_encoding afterward if they need otherwise.
-static VALUE bolt_rb_alloc_output_buffer(VALUE self, VALUE capacity) {
-    (void)self;
-    return rb_str_buf_new(NUM2LONG(capacity));
-}
-
 static inline int bolt_rb_to_ffi_bool(VALUE v) {
     if (v != Qtrue && v != Qfalse) {
         rb_raise(rb_eTypeError, "expected true or false");
@@ -193,10 +183,6 @@ void Init_lz4_flex_ext_native(void) {
     rb_ext_ractor_safe(true);
     VALUE mod = rb_define_module("Lz4FlexExt");
     VALUE native = rb_define_module_under(mod, "Native");
-    // Fast output-buffer allocator (see bolt_rb_alloc_output_buffer): a C-level
-    // String.new(capacity:) for use with the output-buffer convention.
-    rb_define_module_function(native, "alloc_output_buffer", bolt_rb_alloc_output_buffer, 1);
-
     c_boltffi_ruby_var_int = rb_define_class_under(mod, "VarInt", rb_cObject);
     rb_define_alloc_func(c_boltffi_ruby_var_int, boltffi_ruby_var_int_alloc);
     rb_define_singleton_method(c_boltffi_ruby_var_int, "compress", boltffi_ruby_var_int_boltffi_ruby_compress, 1);

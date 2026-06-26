@@ -30,9 +30,9 @@ module Lz4Flex
 
     # Allocate the output buffer on the Ruby side at the worst-case size and let
     # Rust write directly into it, avoiding a copy out of a Rust-owned buffer.
-    # alloc_output_buffer is a C-level String.new(capacity:) (faster: no keyword
-    # parsing); the native glue truncates to the written length via rb_str_set_len.
-    output = Lz4FlexExt::Native.alloc_output_buffer(Lz4FlexExt.max_compressed_size(input.bytesize))
+    # String.new(capacity:) reserves the bytes without zero-filling; the native
+    # glue truncates to the written length via rb_str_set_len.
+    output = String.new(capacity: Lz4FlexExt.max_compressed_size(input.bytesize))
     written = Lz4FlexExt.compress_into(input, encoding_id, output)
     raise EncodeError, "failed to compress block" if written == 0xffffffff
 
@@ -55,8 +55,7 @@ module Lz4Flex
 
     # Reserve the exact decompressed size without zero-filling; the native glue
     # truncates the String to the returned written length via rb_str_set_len.
-    # alloc_output_buffer is a C-level String.new(capacity:) (no keyword parsing).
-    output = Lz4FlexExt::Native.alloc_output_buffer(expected_size)
+    output = String.new(capacity: expected_size)
     written = Lz4FlexExt.decompress_payload_into(input, data_offset, expected_size, output)
     raise DecodeError, "failed to decompress block" if written == 0xffffffff
     raise DecodeError, "unexpected decompressed size" if written != expected_size
